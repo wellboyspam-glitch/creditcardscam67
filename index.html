@@ -64,7 +64,7 @@
       top: 56%;
       transform: translate(-115%, -50%);
       box-shadow: 0 10px 20px rgba(255,59,122,0.25);
-      z-index: 3; /* always above No */
+      z-index: 3;
     }
 
     #no {
@@ -73,12 +73,11 @@
       left: 50%;
       top: 56%;
       transform: translate(15%, -50%);
-      padding: 20px 28px;     /* bigger */
-      font-size: 20px;        /* bigger text */
+      padding: 20px 28px;
+      font-size: 20px;
       border-radius: 999px;
       z-index: 2;
-      /* smooth, intentional sliding */
-      transition: left 0.16s ease, top 0.16s ease;
+      transition: left 0.14s ease, top 0.14s ease;
       will-change: left, top;
     }
 
@@ -113,7 +112,6 @@
       font-weight: 500;
     }
 
-    /* Mobile tweaks (do NOT shrink the big No button) */
     @media (max-width: 520px) {
       .stage { height: 260px; }
       #yes { padding: 14px 18px; }
@@ -146,7 +144,6 @@
     const yesBtn = document.getElementById('yes');
     const result = document.getElementById('result');
 
-    // Helpers
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
     function rectsOverlap(r1, r2, gap = 0) {
@@ -158,135 +155,169 @@
       );
     }
 
-    function getNoCenterRect() {
-      const r = noBtn.getBoundingClientRect();
-      return { r, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+    function getNoRect() {
+      return noBtn.getBoundingClientRect();
     }
 
     function setNoPositionWithinStage(leftPx, topPx) {
-      // left/top are relative to stage (px)
       noBtn.style.left = leftPx + "px";
       noBtn.style.top  = topPx + "px";
-      noBtn.style.transform = "translate(0,0)"; // once we start moving, use pixels only
+      noBtn.style.transform = "translate(0,0)";
     }
 
-    // Compute a "safe" position: inside bounds AND not overlapping the Yes button
-    function findSafePosition(preferredLeft, preferredTop) {
+    function stageMetrics() {
       const s = stage.getBoundingClientRect();
-      const yesRect = yesBtn.getBoundingClientRect();
-      const noRectNow = noBtn.getBoundingClientRect();
+      const b = getNoRect(); // current size
+      const padding = 12;    // keep away from edges so it doesn't feel stuck
+      const maxLeft = s.width  - b.width  - padding;
+      const maxTop  = s.height - b.height - padding;
+      return { s, b, padding, maxLeft, maxTop };
+    }
 
-      const padding = 10;
+    // Random safe spot far from pointer + not overlapping Yes
+    function randomSafeSpot(pointerX, pointerY) {
+      const { s, b, padding, maxLeft, maxTop } = stageMetrics();
+      const yesRect = yesBtn.getBoundingClientRect();
+
+      const minDist = window.matchMedia("(max-width: 520px)").matches ? 160 : 190;
       const avoidGap = 16;
 
-      // Bounds in stage coordinates
-      const maxLeft = s.width - noRectNow.width - padding;
-      const maxTop  = s.height - noRectNow.height - padding;
+      for (let i = 0; i < 60; i++) {
+        const left = padding + Math.random() * Math.max(1, maxLeft - padding);
+        const top  = padding + Math.random() * Math.max(1, maxTop - padding);
 
-      // Clamp preferred
-      let left = clamp(preferredLeft, padding, maxLeft);
-      let top  = clamp(preferredTop,  padding, maxTop);
-
-      // Apply candidate (temporarily) by computing what rect would be in viewport
-      // If overlap, try several alternative "slide" candidates.
-      const candidates = [
-        [left, top],
-        [left + 60, top],
-        [left - 60, top],
-        [left, top + 60],
-        [left, top - 60],
-        [left + 80, top + 40],
-        [left - 80, top + 40],
-        [left + 80, top - 40],
-        [left - 80, top - 40],
-      ];
-
-      for (const [cL, cT] of candidates) {
-        const cLeft = clamp(cL, padding, maxLeft);
-        const cTop  = clamp(cT, padding, maxTop);
-
-        // Predict No rect in viewport if placed at (cLeft, cTop)
         const predicted = {
-          left: s.left + cLeft,
-          top: s.top + cTop,
-          right: s.left + cLeft + noRectNow.width,
-          bottom: s.top + cTop + noRectNow.height
+          left: s.left + left,
+          top: s.top + top,
+          right: s.left + left + b.width,
+          bottom: s.top + top + b.height
         };
 
-        if (!rectsOverlap(predicted, yesRect, avoidGap)) {
-          return { left: cLeft, top: cTop };
-        }
+        // Don't cover YES
+        if (rectsOverlap(predicted, yesRect, avoidGap)) continue;
+
+        // Stay far from pointer (distance to button center)
+        const cx = predicted.left + b.width / 2;
+        const cy = predicted.top  + b.height / 2;
+        const dist = Math.hypot(cx - pointerX, cy - pointerY);
+        if (dist < minDist) continue;
+
+        return { left, top };
       }
 
-      // Last resort: put it in a corner away from center
-      return { left: padding, top: padding };
+      // Fallback: just pick a corner that isn't the pointer corner
+      return { left: padding, top: maxTop };
     }
 
-    // Main: slide away from the pointer position (opposite direction)
-    function fleeFromPointer(clientX, clientY) {
-      const s = stage.getBoundingClientRect();
-      const { r: noRect, cx, cy } = getNoCenterRect();
+    // Directional flee + anti-stuck "juke"
+    let lastMove = 0;
 
-      // Vector from pointer -> no center
-      let vx = cx - clientX;
-      let vy = cy - clientY;
+    function flee(pointerX, pointerY) {
+      const now = performance.now();
+      if (now - lastMove < 35) return; // throttle so it feels smooth, not chaotic
+      lastMove = now;
 
-      // If pointer is exactly on it, pick a random direction
-      const mag = Math.hypot(vx, vy);
+      const { s, b, padding, maxLeft, maxTop } = stageMetrics();
+      const yesRect = yesBtn.getBoundingClientRect();
+
+      // Current pos in stage coordinates
+      const noRect = getNoRect();
+      const curLeft = noRect.left - s.left;
+      const curTop  = noRect.top  - s.top;
+
+      // Vector away from pointer
+      const cx = noRect.left + noRect.width / 2;
+      const cy = noRect.top  + noRect.height / 2;
+
+      let vx = cx - pointerX;
+      let vy = cy - pointerY;
+      let mag = Math.hypot(vx, vy);
+
       if (mag < 0.001) {
         const a = Math.random() * Math.PI * 2;
         vx = Math.cos(a);
         vy = Math.sin(a);
+        mag = 1;
       } else {
         vx /= mag;
         vy /= mag;
       }
 
-      // Step size: bigger on desktop, slightly smaller on mobile for control
+      // Add a bit of sideways "juke" so it doesn't get pinned to one edge
+      // Rotate vector slightly +/- ~25 degrees
+      const juke = (Math.random() - 0.5) * (Math.PI / 3.6);
+      const rx = vx * Math.cos(juke) - vy * Math.sin(juke);
+      const ry = vx * Math.sin(juke) + vy * Math.cos(juke);
+
       const isMobile = window.matchMedia("(max-width: 520px)").matches;
-      const step = isMobile ? 120 : 150;
+      const step = isMobile ? 150 : 190;
 
-      // Current position of No in stage coordinates
-      const currentLeft = noRect.left - s.left;
-      const currentTop  = noRect.top - s.top;
+      let desiredLeft = curLeft + rx * step;
+      let desiredTop  = curTop  + ry * step;
 
-      // Desired new position (slide away)
-      const desiredLeft = currentLeft + vx * step;
-      const desiredTop  = currentTop + vy * step;
+      // Clamp inside bounds (with padding)
+      desiredLeft = clamp(desiredLeft, padding, maxLeft);
+      desiredTop  = clamp(desiredTop,  padding, maxTop);
 
-      const safe = findSafePosition(desiredLeft, desiredTop);
-      setNoPositionWithinStage(safe.left, safe.top);
+      // Predict overlap with YES after move
+      const predicted = {
+        left: s.left + desiredLeft,
+        top: s.top + desiredTop,
+        right: s.left + desiredLeft + b.width,
+        bottom: s.top + desiredTop + b.height
+      };
+
+      const wouldCoverYes = rectsOverlap(predicted, yesRect, 16);
+
+      // Detect "stuck" (hardly moved because of clamping)
+      const movedDist = Math.hypot(desiredLeft - curLeft, desiredTop - curTop);
+      const stuck = movedDist < 25;
+
+      // If stuck OR would cover YES, do a hard juke to a random far spot
+      if (stuck || wouldCoverYes) {
+        const spot = randomSafeSpot(pointerX, pointerY);
+        setNoPositionWithinStage(spot.left, spot.top);
+        return;
+      }
+
+      // Also if pointer is still too close after the move, juke away
+      const newCenterX = predicted.left + b.width / 2;
+      const newCenterY = predicted.top  + b.height / 2;
+      const newDist = Math.hypot(newCenterX - pointerX, newCenterY - pointerY);
+      const minDist = isMobile ? 150 : 180;
+      if (newDist < minDist) {
+        const spot = randomSafeSpot(pointerX, pointerY);
+        setNoPositionWithinStage(spot.left, spot.top);
+        return;
+      }
+
+      setNoPositionWithinStage(desiredLeft, desiredTop);
     }
 
-    // Initial pixel position so movement is consistent
+    // Initial position
     window.addEventListener('load', () => {
-      const s = stage.getBoundingClientRect();
-      // Start it top-right-ish, away from Yes
-      const startLeft = s.width * 0.72;
-      const startTop  = s.height * 0.22;
-      setNoPositionWithinStage(startLeft, startTop);
+      const { maxLeft } = stageMetrics();
+      setNoPositionWithinStage(maxLeft * 0.82, 18);
     });
 
-    // Trigger flee when the pointer is near (feels intentional)
+    // Make it impossible to catch:
+    // - if pointer gets near, flee
+    // - if they try to press/click it, flee immediately
     stage.addEventListener('pointermove', (e) => {
-      const { cx, cy } = getNoCenterRect();
+      const r = getNoRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top  + r.height / 2;
       const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-      if (dist < 140) {
-        fleeFromPointer(e.clientX, e.clientY);
-      }
+
+      // Start fleeing earlier so it never becomes "clickable"
+      const threshold = window.matchMedia("(max-width: 520px)").matches ? 190 : 210;
+      if (dist < threshold) flee(e.clientX, e.clientY);
     });
 
-    // Also flee on hover / press directly on the No button
-    noBtn.addEventListener('mouseenter', (e) => {
-      fleeFromPointer(e.clientX, e.clientY);
-    });
+    noBtn.addEventListener('mouseenter', (e) => flee(e.clientX, e.clientY));
+    noBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); flee(e.clientX, e.clientY); });
+    noBtn.addEventListener('click', (e) => { e.preventDefault(); flee(e.clientX, e.clientY); });
 
-    noBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      fleeFromPointer(e.clientX, e.clientY);
-    });
-
-    // YES click
     yesBtn.addEventListener('click', () => {
       result.style.display = "block";
       yesBtn.disabled = true;
