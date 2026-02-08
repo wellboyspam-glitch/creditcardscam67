@@ -61,13 +61,19 @@
       transform: translate(-115%, -50%);
       box-shadow: 0 10px 20px rgba(255,59,122,0.25);
     }
-    #no {
-      background: #111;
-      color: white;
-      left: 50%;
-      top: 56%;
-      transform: translate(15%, -50%);
-    }
+    
+ #no {
+  background: #111;
+  color: white;
+  left: 50%;
+  top: 56%;
+  transform: translate(15%, -50%);
+  padding: 20px 28px;   
+  font-size: 20px;      
+  border-radius: 999px;
+  transition: left 0.15s ease, top 0.15s ease;
+}
+
 
     .result {
       display: none;
@@ -105,20 +111,20 @@
 </head>
 <body>
   <div class="card" id="card">
-    <h1>Will you be my Valentine? 💘</h1>
-    <p>Choose wisely 😌</p>
+    <h1>will u be my valentin? (dont say no pls)</h1>
+    <p>choose wisely</p>
 
     <div class="stage" id="stage" aria-label="play area">
-      <button class="btn" id="yes">Yes 💖</button>
-      <button class="btn" id="no">No 🙃</button>
+      <button class="btn" id="yes">YES</button>
+      <button class="btn" id="no">no (glory to the state of israel)</button>
     </div>
 
     <div class="result" id="result">
       <!-- Replace the GIF URL below with your own GIF link if you want -->
       <img class="gif" id="gif" alt="happy gif"
            src="https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif" />
-      <div class="msg" id="msg">YAYYY!! 😭💗</div>
-      <div class="small" id="sub">Text me: “yes” so I can plan something cute 😉</div>
+      <div class="msg" id="msg">yipeee i lov you</div>
+      <div class="small" id="sub">next time trust the process</div>
     </div>
   </div>
 
