@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Valentine?</title>
+  <style>
+    :root { --pad: 18px; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #ffe2ec, #fff);
+      overflow: hidden;
+    }
+    .card {
+      width: min(520px, calc(100vw - 2*var(--pad)));
+      background: rgba(255,255,255,0.85);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      text-align: center;
+      position: relative;
+    }
+    h1 { margin: 6px 0 8px; font-size: clamp(24px, 4vw, 34px); }
+    p  { margin: 0 0 16px; opacity: 0.85; }
+
+    .stage {
+      position: relative;
+      height: 220px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255,192,203,0.25), rgba(255,255,255,0));
+      overflow: hidden;
+      border: 1px dashed rgba(0,0,0,0.08);
+      display: grid;
+      place-items: center;
+    }
+
+    .btn {
+      border: 0;
+      padding: 12px 18px;
+      border-radius: 999px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 16px;
+      user-select: none;
+      transition: transform 0.08s ease;
+      touch-action: manipulation;
+      position: absolute;
+    }
+    .btn:active { transform: scale(0.98); }
+
+    #yes {
+      background: #ff3b7a;
+      color: white;
+      left: 50%;
+      top: 56%;
+      transform: translate(-115%, -50%);
+      box-shadow: 0 10px 20px rgba(255,59,122,0.25);
+    }
+    #no {
+      background: #111;
+      color: white;
+      left: 50%;
+      top: 56%;
+      transform: translate(15%, -50%);
+    }
+
+    .result {
+      display: none;
+      margin-top: 14px;
+      animation: pop 240ms ease-out;
+    }
+    @keyframes pop {
+      from { transform: scale(0.98); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+    .gif {
+      width: min(320px, 90%);
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.10);
+    }
+    .msg {
+      margin-top: 12px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .small {
+      margin-top: 6px;
+      font-size: 14px;
+      opacity: 0.75;
+      font-weight: 500;
+    }
+
+    /* Mobile: make “No” extra slippery */
+    @media (max-width: 520px) {
+      .stage { height: 260px; }
+      .btn { padding: 14px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <h1>Will you be my Valentine? 💘</h1>
+    <p>Choose wisely 😌</p>
+
+    <div class="stage" id="stage" aria-label="play area">
+      <button class="btn" id="yes">Yes 💖</button>
+      <button class="btn" id="no">No 🙃</button>
+    </div>
+
+    <div class="result" id="result">
+      <!-- Replace the GIF URL below with your own GIF link if you want -->
+      <img class="gif" id="gif" alt="happy gif"
+           src="https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif" />
+      <div class="msg" id="msg">YAYYY!! 😭💗</div>
+      <div class="small" id="sub">Text me: “yes” so I can plan something cute 😉</div>
+    </div>
+  </div>
+
+  <script>
+    const stage  = document.getElementById('stage');
+    const noBtn  = document.getElementById('no');
+    const yesBtn = document.getElementById('yes');
+    const result = document.getElementById('result');
+
+    // Keep the "No" button inside the stage bounds
+    function moveNoButton() {
+      const s = stage.getBoundingClientRect();
+      const b = noBtn.getBoundingClientRect();
+
+      const padding = 10;
+
+      const maxX = s.width - b.width - padding;
+      const maxY = s.height - b.height - padding;
+
+      const x = Math.max(padding, Math.random() * maxX);
+      const y = Math.max(padding, Math.random() * maxY);
+
+      // place relative to stage
+      noBtn.style.left = x + "px";
+      noBtn.style.top  = y + "px";
+      noBtn.style.transform = "translate(0,0)";
+    }
+
+    // First position: set explicitly so move logic works consistently
+    window.addEventListener('load', () => {
+      // Convert initial centered position into absolute coordinates
+      // so future moves are smooth.
+      const s = stage.getBoundingClientRect();
+      noBtn.style.left = (s.width * 0.62) + "px";
+      noBtn.style.top  = (s.height * 0.56) + "px";
+      noBtn.style.transform = "translate(0,0)";
+    });
+
+    // Make it dodge on hover (desktop) and touch start (mobile)
+    noBtn.addEventListener('mouseenter', moveNoButton);
+    noBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      moveNoButton();
+    });
+
+    // Extra: if they chase it, it keeps running
+    stage.addEventListener('pointermove', (e) => {
+      // If pointer is close to No button, move it
+      const b = noBtn.getBoundingClientRect();
+      const dx = e.clientX - (b.left + b.width/2);
+      const dy = e.clientY - (b.top + b.height/2);
+      const dist = Math.hypot(dx, dy);
+      if (dist < 90) moveNoButton();
+    });
+
+    yesBtn.addEventListener('click', () => {
+      result.style.display = "block";
+      // Disable buttons after success
+      yesBtn.disabled = true;
+      noBtn.disabled = true;
+      yesBtn.style.opacity = "0.6";
+      noBtn.style.opacity = "0.6";
+    });
+  </script>
+</body>
+</html>
