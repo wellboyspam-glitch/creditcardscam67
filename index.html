@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Valentine?</title>
+
   <style>
     :root { --pad: 18px; }
 
@@ -19,7 +20,7 @@
 
     .card {
       width: min(520px, calc(100vw - 2*var(--pad)));
-      background: rgba(255,255,255,0.85);
+      background: rgba(255,255,255,0.9);
       border: 1px solid rgba(0,0,0,0.06);
       border-radius: 18px;
       padding: 22px;
@@ -112,29 +113,50 @@
       font-weight: 500;
     }
 
+    /* Mobile tweaks */
     @media (max-width: 520px) {
       .stage { height: 260px; }
       #yes { padding: 14px 18px; }
-      /* #no stays big */
+      /* keep #no big */
+    }
+
+    /* ===== Confetti (Option A: hearts) ===== */
+    .confetti {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 999;
+    }
+    .confetti span {
+      position: absolute;
+      top: -10vh;
+      opacity: 0.9;
+      animation: fall 3s linear forwards;
+    }
+    @keyframes fall {
+      to {
+        transform: translateY(110vh) rotate(360deg);
+      }
     }
   </style>
 </head>
 
 <body>
-  <div class="card" id="card">
+  <div class="card">
     <h1>will u be my valentin? (dont say no pls)</h1>
     <p>choose wisely</p>
 
     <div class="stage" id="stage" aria-label="play area">
       <button class="btn" id="yes">YES</button>
-      <button class="btn" id="no">no (glory to israel ✡️)</button>
+      <button class="btn" id="no">no</button>
     </div>
 
     <div class="result" id="result">
-      <img class="gif" id="gif" alt="happy gif"
+      <img class="gif" alt="happy gif"
            src="https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif" />
-      <div class="msg" id="msg">yipeee i lov you</div>
-      <div class="small" id="sub">next time trust the process</div>
+      <div class="msg">yipeee i lov you</div>
+      <div class="small">next time trust the process</div>
     </div>
   </div>
 
@@ -144,181 +166,120 @@
     const yesBtn = document.getElementById('yes');
     const result = document.getElementById('result');
 
+    /* ---------- Confetti (Option A) ---------- */
+    function launchConfetti() {
+      const container = document.createElement("div");
+      container.className = "confetti";
+      document.body.appendChild(container);
+
+      const hearts = ["💖","💘","💕","💗","❤️"];
+      const count = 40;
+
+      for (let i = 0; i < count; i++) {
+        const piece = document.createElement("span");
+        piece.textContent = hearts[Math.floor(Math.random() * hearts.length)];
+        piece.style.left = Math.random() * 100 + "vw";
+        piece.style.fontSize = (16 + Math.random() * 18) + "px";
+        piece.style.animationDelay = (Math.random() * 0.5) + "s";
+        container.appendChild(piece);
+      }
+
+      setTimeout(() => container.remove(), 3500);
+    }
+
+    /* ---------- No button: uncatchable movement ---------- */
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-
-    function rectsOverlap(r1, r2, gap = 0) {
-      return !(
-        (r1.right + gap) < r2.left ||
-        (r1.left - gap)  > r2.right ||
-        (r1.bottom + gap)< r2.top ||
-        (r1.top - gap)   > r2.bottom
-      );
-    }
-
-    function getNoRect() {
-      return noBtn.getBoundingClientRect();
-    }
-
-    function setNoPositionWithinStage(leftPx, topPx) {
-      noBtn.style.left = leftPx + "px";
-      noBtn.style.top  = topPx + "px";
-      noBtn.style.transform = "translate(0,0)";
-    }
+    let lastMove = 0;
 
     function stageMetrics() {
       const s = stage.getBoundingClientRect();
-      const b = getNoRect(); // current size
-      const padding = 12;    // keep away from edges so it doesn't feel stuck
+      const b = noBtn.getBoundingClientRect();
+      const padding = 12;
       const maxLeft = s.width  - b.width  - padding;
       const maxTop  = s.height - b.height - padding;
       return { s, b, padding, maxLeft, maxTop };
     }
 
-    // Random safe spot far from pointer + not overlapping Yes
-    function randomSafeSpot(pointerX, pointerY) {
+    function setNo(left, top) {
+      noBtn.style.left = left + "px";
+      noBtn.style.top  = top + "px";
+      noBtn.style.transform = "translate(0,0)";
+    }
+
+    function randomFarSpot(px, py) {
       const { s, b, padding, maxLeft, maxTop } = stageMetrics();
-      const yesRect = yesBtn.getBoundingClientRect();
-
       const minDist = window.matchMedia("(max-width: 520px)").matches ? 160 : 190;
-      const avoidGap = 16;
 
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 50; i++) {
         const left = padding + Math.random() * Math.max(1, maxLeft - padding);
         const top  = padding + Math.random() * Math.max(1, maxTop - padding);
-
-        const predicted = {
-          left: s.left + left,
-          top: s.top + top,
-          right: s.left + left + b.width,
-          bottom: s.top + top + b.height
-        };
-
-        // Don't cover YES
-        if (rectsOverlap(predicted, yesRect, avoidGap)) continue;
-
-        // Stay far from pointer (distance to button center)
-        const cx = predicted.left + b.width / 2;
-        const cy = predicted.top  + b.height / 2;
-        const dist = Math.hypot(cx - pointerX, cy - pointerY);
-        if (dist < minDist) continue;
-
-        return { left, top };
+        const cx = s.left + left + b.width/2;
+        const cy = s.top  + top  + b.height/2;
+        if (Math.hypot(cx - px, cy - py) > minDist) return { left, top };
       }
-
-      // Fallback: just pick a corner that isn't the pointer corner
       return { left: padding, top: maxTop };
     }
 
-    // Directional flee + anti-stuck "juke"
-    let lastMove = 0;
-
-    function flee(pointerX, pointerY) {
+    function flee(px, py) {
       const now = performance.now();
-      if (now - lastMove < 35) return; // throttle so it feels smooth, not chaotic
+      if (now - lastMove < 35) return;
       lastMove = now;
 
       const { s, b, padding, maxLeft, maxTop } = stageMetrics();
-      const yesRect = yesBtn.getBoundingClientRect();
+      const r = noBtn.getBoundingClientRect();
 
-      // Current pos in stage coordinates
-      const noRect = getNoRect();
-      const curLeft = noRect.left - s.left;
-      const curTop  = noRect.top  - s.top;
+      const cx = r.left + r.width/2;
+      const cy = r.top  + r.height/2;
 
-      // Vector away from pointer
-      const cx = noRect.left + noRect.width / 2;
-      const cy = noRect.top  + noRect.height / 2;
-
-      let vx = cx - pointerX;
-      let vy = cy - pointerY;
+      let vx = cx - px;
+      let vy = cy - py;
       let mag = Math.hypot(vx, vy);
+      if (mag < 0.001) { vx = Math.random()-0.5; vy = Math.random()-0.5; mag = 1; }
+      vx /= mag; vy /= mag;
 
-      if (mag < 0.001) {
-        const a = Math.random() * Math.PI * 2;
-        vx = Math.cos(a);
-        vy = Math.sin(a);
-        mag = 1;
-      } else {
-        vx /= mag;
-        vy /= mag;
-      }
-
-      // Add a bit of sideways "juke" so it doesn't get pinned to one edge
-      // Rotate vector slightly +/- ~25 degrees
-      const juke = (Math.random() - 0.5) * (Math.PI / 3.6);
+      const juke = (Math.random()-0.5) * (Math.PI/3.6);
       const rx = vx * Math.cos(juke) - vy * Math.sin(juke);
       const ry = vx * Math.sin(juke) + vy * Math.cos(juke);
 
-      const isMobile = window.matchMedia("(max-width: 520px)").matches;
-      const step = isMobile ? 150 : 190;
+      const step = window.matchMedia("(max-width: 520px)").matches ? 150 : 190;
 
-      let desiredLeft = curLeft + rx * step;
-      let desiredTop  = curTop  + ry * step;
+      const curLeft = r.left - s.left;
+      const curTop  = r.top  - s.top;
 
-      // Clamp inside bounds (with padding)
-      desiredLeft = clamp(desiredLeft, padding, maxLeft);
-      desiredTop  = clamp(desiredTop,  padding, maxTop);
+      let nextLeft = clamp(curLeft + rx*step, padding, maxLeft);
+      let nextTop  = clamp(curTop  + ry*step, padding, maxTop);
 
-      // Predict overlap with YES after move
-      const predicted = {
-        left: s.left + desiredLeft,
-        top: s.top + desiredTop,
-        right: s.left + desiredLeft + b.width,
-        bottom: s.top + desiredTop + b.height
-      };
-
-      const wouldCoverYes = rectsOverlap(predicted, yesRect, 16);
-
-      // Detect "stuck" (hardly moved because of clamping)
-      const movedDist = Math.hypot(desiredLeft - curLeft, desiredTop - curTop);
-      const stuck = movedDist < 25;
-
-      // If stuck OR would cover YES, do a hard juke to a random far spot
-      if (stuck || wouldCoverYes) {
-        const spot = randomSafeSpot(pointerX, pointerY);
-        setNoPositionWithinStage(spot.left, spot.top);
+      const moved = Math.hypot(nextLeft-curLeft, nextTop-curTop);
+      if (moved < 25) {
+        const spot = randomFarSpot(px, py);
+        setNo(spot.left, spot.top);
         return;
       }
 
-      // Also if pointer is still too close after the move, juke away
-      const newCenterX = predicted.left + b.width / 2;
-      const newCenterY = predicted.top  + b.height / 2;
-      const newDist = Math.hypot(newCenterX - pointerX, newCenterY - pointerY);
-      const minDist = isMobile ? 150 : 180;
-      if (newDist < minDist) {
-        const spot = randomSafeSpot(pointerX, pointerY);
-        setNoPositionWithinStage(spot.left, spot.top);
-        return;
-      }
-
-      setNoPositionWithinStage(desiredLeft, desiredTop);
+      setNo(nextLeft, nextTop);
     }
 
-    // Initial position
     window.addEventListener('load', () => {
       const { maxLeft } = stageMetrics();
-      setNoPositionWithinStage(maxLeft * 0.82, 18);
+      setNo(maxLeft * 0.8, 18);
     });
 
-    // Make it impossible to catch:
-    // - if pointer gets near, flee
-    // - if they try to press/click it, flee immediately
     stage.addEventListener('pointermove', (e) => {
-      const r = getNoRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top  + r.height / 2;
+      const r = noBtn.getBoundingClientRect();
+      const cx = r.left + r.width/2;
+      const cy = r.top  + r.height/2;
       const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-
-      // Start fleeing earlier so it never becomes "clickable"
       const threshold = window.matchMedia("(max-width: 520px)").matches ? 190 : 210;
       if (dist < threshold) flee(e.clientX, e.clientY);
     });
 
-    noBtn.addEventListener('mouseenter', (e) => flee(e.clientX, e.clientY));
-    noBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); flee(e.clientX, e.clientY); });
-    noBtn.addEventListener('click', (e) => { e.preventDefault(); flee(e.clientX, e.clientY); });
+    noBtn.addEventListener('mouseenter', e => flee(e.clientX, e.clientY));
+    noBtn.addEventListener('pointerdown', e => { e.preventDefault(); flee(e.clientX, e.clientY); });
+    noBtn.addEventListener('click', e => { e.preventDefault(); flee(e.clientX, e.clientY); });
 
+    /* ---------- YES click ---------- */
     yesBtn.addEventListener('click', () => {
+      launchConfetti();               // 🎉 hearts!
       result.style.display = "block";
       yesBtn.disabled = true;
       noBtn.disabled = true;
