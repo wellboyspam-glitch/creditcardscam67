@@ -6,6 +6,7 @@
   <title>Valentine?</title>
   <style>
     :root { --pad: 18px; }
+
     body {
       margin: 0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -15,6 +16,7 @@
       background: radial-gradient(circle at top, #ffe2ec, #fff);
       overflow: hidden;
     }
+
     .card {
       width: min(520px, calc(100vw - 2*var(--pad)));
       background: rgba(255,255,255,0.85);
@@ -25,6 +27,7 @@
       text-align: center;
       position: relative;
     }
+
     h1 { margin: 6px 0 8px; font-size: clamp(24px, 4vw, 34px); }
     p  { margin: 0 0 16px; opacity: 0.85; }
 
@@ -47,10 +50,11 @@
       cursor: pointer;
       font-size: 16px;
       user-select: none;
-      transition: transform 0.08s ease;
       touch-action: manipulation;
       position: absolute;
+      white-space: nowrap;
     }
+
     .btn:active { transform: scale(0.98); }
 
     #yes {
@@ -60,41 +64,48 @@
       top: 56%;
       transform: translate(-115%, -50%);
       box-shadow: 0 10px 20px rgba(255,59,122,0.25);
+      z-index: 3; /* always above No */
     }
-    
- #no {
-  background: #111;
-  color: white;
-  left: 50%;
-  top: 56%;
-  transform: translate(15%, -50%);
-  padding: 20px 28px;   
-  font-size: 20px;      
-  border-radius: 999px;
-  transition: left 0.15s ease, top 0.15s ease;
-}
 
+    #no {
+      background: #111;
+      color: white;
+      left: 50%;
+      top: 56%;
+      transform: translate(15%, -50%);
+      padding: 20px 28px;     /* bigger */
+      font-size: 20px;        /* bigger text */
+      border-radius: 999px;
+      z-index: 2;
+      /* smooth, intentional sliding */
+      transition: left 0.16s ease, top 0.16s ease;
+      will-change: left, top;
+    }
 
     .result {
       display: none;
       margin-top: 14px;
       animation: pop 240ms ease-out;
     }
+
     @keyframes pop {
       from { transform: scale(0.98); opacity: 0; }
       to   { transform: scale(1); opacity: 1; }
     }
+
     .gif {
       width: min(320px, 90%);
       border-radius: 14px;
       border: 1px solid rgba(0,0,0,0.08);
       box-shadow: 0 10px 24px rgba(0,0,0,0.10);
     }
+
     .msg {
       margin-top: 12px;
       font-size: 18px;
       font-weight: 700;
     }
+
     .small {
       margin-top: 6px;
       font-size: 14px;
@@ -102,13 +113,15 @@
       font-weight: 500;
     }
 
-    /* Mobile: make “No” extra slippery */
+    /* Mobile tweaks (do NOT shrink the big No button) */
     @media (max-width: 520px) {
       .stage { height: 260px; }
-      .btn { padding: 14px 18px; }
+      #yes { padding: 14px 18px; }
+      /* #no stays big */
     }
   </style>
 </head>
+
 <body>
   <div class="card" id="card">
     <h1>will u be my valentin? (dont say no pls)</h1>
@@ -120,7 +133,6 @@
     </div>
 
     <div class="result" id="result">
-      <!-- Replace the GIF URL below with your own GIF link if you want -->
       <img class="gif" id="gif" alt="happy gif"
            src="https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif" />
       <div class="msg" id="msg">yipeee i lov you</div>
@@ -134,55 +146,149 @@
     const yesBtn = document.getElementById('yes');
     const result = document.getElementById('result');
 
-    // Keep the "No" button inside the stage bounds
-    function moveNoButton() {
-      const s = stage.getBoundingClientRect();
-      const b = noBtn.getBoundingClientRect();
+    // Helpers
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-      const padding = 10;
-
-      const maxX = s.width - b.width - padding;
-      const maxY = s.height - b.height - padding;
-
-      const x = Math.max(padding, Math.random() * maxX);
-      const y = Math.max(padding, Math.random() * maxY);
-
-      // place relative to stage
-      noBtn.style.left = x + "px";
-      noBtn.style.top  = y + "px";
-      noBtn.style.transform = "translate(0,0)";
+    function rectsOverlap(r1, r2, gap = 0) {
+      return !(
+        (r1.right + gap) < r2.left ||
+        (r1.left - gap)  > r2.right ||
+        (r1.bottom + gap)< r2.top ||
+        (r1.top - gap)   > r2.bottom
+      );
     }
 
-    // First position: set explicitly so move logic works consistently
-    window.addEventListener('load', () => {
-      // Convert initial centered position into absolute coordinates
-      // so future moves are smooth.
+    function getNoCenterRect() {
+      const r = noBtn.getBoundingClientRect();
+      return { r, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+    }
+
+    function setNoPositionWithinStage(leftPx, topPx) {
+      // left/top are relative to stage (px)
+      noBtn.style.left = leftPx + "px";
+      noBtn.style.top  = topPx + "px";
+      noBtn.style.transform = "translate(0,0)"; // once we start moving, use pixels only
+    }
+
+    // Compute a "safe" position: inside bounds AND not overlapping the Yes button
+    function findSafePosition(preferredLeft, preferredTop) {
       const s = stage.getBoundingClientRect();
-      noBtn.style.left = (s.width * 0.62) + "px";
-      noBtn.style.top  = (s.height * 0.56) + "px";
-      noBtn.style.transform = "translate(0,0)";
+      const yesRect = yesBtn.getBoundingClientRect();
+      const noRectNow = noBtn.getBoundingClientRect();
+
+      const padding = 10;
+      const avoidGap = 16;
+
+      // Bounds in stage coordinates
+      const maxLeft = s.width - noRectNow.width - padding;
+      const maxTop  = s.height - noRectNow.height - padding;
+
+      // Clamp preferred
+      let left = clamp(preferredLeft, padding, maxLeft);
+      let top  = clamp(preferredTop,  padding, maxTop);
+
+      // Apply candidate (temporarily) by computing what rect would be in viewport
+      // If overlap, try several alternative "slide" candidates.
+      const candidates = [
+        [left, top],
+        [left + 60, top],
+        [left - 60, top],
+        [left, top + 60],
+        [left, top - 60],
+        [left + 80, top + 40],
+        [left - 80, top + 40],
+        [left + 80, top - 40],
+        [left - 80, top - 40],
+      ];
+
+      for (const [cL, cT] of candidates) {
+        const cLeft = clamp(cL, padding, maxLeft);
+        const cTop  = clamp(cT, padding, maxTop);
+
+        // Predict No rect in viewport if placed at (cLeft, cTop)
+        const predicted = {
+          left: s.left + cLeft,
+          top: s.top + cTop,
+          right: s.left + cLeft + noRectNow.width,
+          bottom: s.top + cTop + noRectNow.height
+        };
+
+        if (!rectsOverlap(predicted, yesRect, avoidGap)) {
+          return { left: cLeft, top: cTop };
+        }
+      }
+
+      // Last resort: put it in a corner away from center
+      return { left: padding, top: padding };
+    }
+
+    // Main: slide away from the pointer position (opposite direction)
+    function fleeFromPointer(clientX, clientY) {
+      const s = stage.getBoundingClientRect();
+      const { r: noRect, cx, cy } = getNoCenterRect();
+
+      // Vector from pointer -> no center
+      let vx = cx - clientX;
+      let vy = cy - clientY;
+
+      // If pointer is exactly on it, pick a random direction
+      const mag = Math.hypot(vx, vy);
+      if (mag < 0.001) {
+        const a = Math.random() * Math.PI * 2;
+        vx = Math.cos(a);
+        vy = Math.sin(a);
+      } else {
+        vx /= mag;
+        vy /= mag;
+      }
+
+      // Step size: bigger on desktop, slightly smaller on mobile for control
+      const isMobile = window.matchMedia("(max-width: 520px)").matches;
+      const step = isMobile ? 120 : 150;
+
+      // Current position of No in stage coordinates
+      const currentLeft = noRect.left - s.left;
+      const currentTop  = noRect.top - s.top;
+
+      // Desired new position (slide away)
+      const desiredLeft = currentLeft + vx * step;
+      const desiredTop  = currentTop + vy * step;
+
+      const safe = findSafePosition(desiredLeft, desiredTop);
+      setNoPositionWithinStage(safe.left, safe.top);
+    }
+
+    // Initial pixel position so movement is consistent
+    window.addEventListener('load', () => {
+      const s = stage.getBoundingClientRect();
+      // Start it top-right-ish, away from Yes
+      const startLeft = s.width * 0.72;
+      const startTop  = s.height * 0.22;
+      setNoPositionWithinStage(startLeft, startTop);
     });
 
-    // Make it dodge on hover (desktop) and touch start (mobile)
-    noBtn.addEventListener('mouseenter', moveNoButton);
+    // Trigger flee when the pointer is near (feels intentional)
+    stage.addEventListener('pointermove', (e) => {
+      const { cx, cy } = getNoCenterRect();
+      const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+      if (dist < 140) {
+        fleeFromPointer(e.clientX, e.clientY);
+      }
+    });
+
+    // Also flee on hover / press directly on the No button
+    noBtn.addEventListener('mouseenter', (e) => {
+      fleeFromPointer(e.clientX, e.clientY);
+    });
+
     noBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      moveNoButton();
+      fleeFromPointer(e.clientX, e.clientY);
     });
 
-    // Extra: if they chase it, it keeps running
-    stage.addEventListener('pointermove', (e) => {
-      // If pointer is close to No button, move it
-      const b = noBtn.getBoundingClientRect();
-      const dx = e.clientX - (b.left + b.width/2);
-      const dy = e.clientY - (b.top + b.height/2);
-      const dist = Math.hypot(dx, dy);
-      if (dist < 90) moveNoButton();
-    });
-
+    // YES click
     yesBtn.addEventListener('click', () => {
       result.style.display = "block";
-      // Disable buttons after success
       yesBtn.disabled = true;
       noBtn.disabled = true;
       yesBtn.style.opacity = "0.6";
